@@ -1,0 +1,321 @@
+"""Reconstruction-energy (E(Pandey 2x1) - E(as-cleaved)) learning curves per arm (paper Fig. 4c).
+
+Median and 25-75th percentile over seeds per AL iteration, in eV and J/m^2, plus markdown tables.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import re
+import sys
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analysis"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from quick_eval_iterations import _cache_geom_sig_line, compute_deltas, dft_energy, relax_protocol_tag
+from skmd import plot_style
+
+EV_TO_J = 1.602176634e-19
+ANG2_TO_M2 = 1e-20
+
+# label -> (seed-dir prefix, model filename under training/iteration_N/); legend order = paper Fig. 4c.
+DEFAULT_ARMS = {
+    "Langevin 300K (U)": ("langevin_300k", "si_slab_skmd_lora_it_{n}.model"),
+    "Langevin 700K (U)": ("langevin_700k", "si_slab_skmd_lora_it_{n}.model"),
+    "uHAL (U)":          ("uhal",          "si_slab_uhal_lora_it_{n}.model"),
+    "SKMD (O)":          ("skmd_offline",  "si_slab_skmd_lora_it_{n}.model"),
+    "a-SKMD (O)":        ("askmd",         "si_slab_askmd_lora_it_{n}.model"),
+}
+
+LABEL_RE = re.compile(r"^it(\d+)(?:_base)?$")
+
+
+def load_arm(file_root: Path, prefix: str, model_pattern: str, reference, reconstructed,
+             device: str, refresh_cache: bool = False,
+             relax: dict | None = None) -> dict[int, list[float]] | None:
+    """Return {iteration: [delta_eV, ...]} pooled over this arm's seeds (cached per seed), or None if none exist."""
+    seed_dirs = sorted(file_root.glob(f"{prefix}_seed_*"))
+    if not seed_dirs:
+        return None
+
+    data: dict[int, list[float]] = {}
+    for seed_dir in seed_dirs:
+        if relax:
+            cache_path = seed_dir / ".reconstruction_energy_relaxed_cache.csv"
+            relax_here = dict(relax, geom_dir=seed_dir / "relaxed_recon_geoms")
+        else:
+            cache_path = seed_dir / ".reconstruction_energy_cache.csv"
+            relax_here = None
+        try:
+            rows = compute_deltas(seed_dir, reference, reconstructed, device=device,
+                                   model_pattern=model_pattern, cache_path=cache_path,
+                                   refresh_cache=refresh_cache,
+                                   relax=relax_here)
+        except SystemExit:
+            # No model files (e.g. only the cache was copied locally): use cached deltas.
+            rows = rows_from_cache_only(cache_path, reference, reconstructed, relax_protocol_tag(relax))
+            if rows is None:
+                print(f"    [warn] no models or usable cache under {seed_dir}, skipping this seed")
+                continue
+            print(f"    [cache-only] {seed_dir.name}: {len(rows)} cached model(s), no model files")
+        for label, _e_ref, _e_recon, delta in rows:
+            m = LABEL_RE.match(label)
+            if not m:
+                continue
+            it = int(m.group(1))
+            data.setdefault(it, []).append(delta)
+
+    return data
+
+
+def rows_from_cache_only(cache_path: Path, reference, reconstructed, protocol: str = ""):
+    """[(label, e_ref, e_recon, delta), ...] from a seed's cache alone; None if missing or mismatched."""
+    if not cache_path.is_file():
+        return None
+    with open(cache_path, newline="") as fh:
+        if fh.readline() != _cache_geom_sig_line(reference, reconstructed, protocol):
+            print(f"    [warn] {cache_path} is for a different reference/reconstructed geometry -- ignoring it")
+            return None
+        return [(row["label"], float(row["e_reference_eV"]), float(row["e_reconstructed_eV"]),
+                 float(row["delta_eV"])) for row in csv.DictReader(fh)]
+
+
+def summarize(data: dict[int, list[float]]):
+    """(iterations, medians, p25, p75) arrays, sorted by iteration."""
+    its = sorted(data.keys())
+    medians, lo, hi = [], [], []
+    for it in its:
+        vals = np.array(data[it])
+        medians.append(np.median(vals))
+        lo.append(np.percentile(vals, 25))
+        hi.append(np.percentile(vals, 75))
+    return np.array(its), np.array(medians), np.array(lo), np.array(hi)
+
+
+def surface_area_ang2(atoms) -> float:
+    """In-plane cell area |a x b| (Ang^2); c is the surface normal."""
+    a, b = atoms.cell.array[0], atoms.cell.array[1]
+    return float(np.linalg.norm(np.cross(a, b)))
+
+
+def ev_to_jm2(delta_ev, area_ang2: float, n_surfaces: int):
+    """eV (per simulation cell) -> J/m^2 (per unit area, per surface)."""
+    return delta_ev * EV_TO_J / (n_surfaces * area_ang2 * ANG2_TO_M2)
+
+
+def write_markdown_table(path: Path, curves: list[dict], dft_delta_jm2: float | None) -> None:
+    """GFM table: one row per curve, one J/m^2 column per iteration; DFT value noted above if given."""
+    all_its = sorted({it for c in curves for it in c["its"]})
+
+    lines = []
+    lines.append("<!-- Auto-generated by plot_reconstruction_energy_curves.py -->")
+    lines.append("")
+    lines.append("Reconstruction energy (J/m^2) vs. AL iteration, by method.")
+    if dft_delta_jm2 is not None:
+        lines.append(f"DFT reference: {dft_delta_jm2:+.4f} J/m^2.")
+    lines.append("")
+
+    header = ["Method"] + [f"It. {it}" for it in all_its]
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("|" + "|".join(["---"] * len(header)) + "|")
+
+    for c in curves:
+        by_it = dict(zip(c["its"], c["med"]))
+        row = [f"{c['label']} (n={c['n']})"]
+        for it in all_its:
+            row.append(f"{by_it[it]:+.4f}" if it in by_it else "--")
+        lines.append("| " + " | ".join(row) + " |")
+
+    lines.append("")
+
+    path.write_text("\n".join(lines))
+
+
+def write_markdown_error_table(path: Path, curves: list[dict], dft_delta_jm2: float) -> None:
+    """Like write_markdown_table, but each cell is the value minus dft_delta_jm2."""
+    all_its = sorted({it for c in curves for it in c["its"]})
+
+    lines = []
+    lines.append("<!-- Auto-generated by plot_reconstruction_energy_curves.py -->")
+    lines.append("")
+    lines.append("Reconstruction energy error vs. DFT reference (J/m^2) vs. AL iteration, by method.")
+    lines.append(f"DFT reference: {dft_delta_jm2:+.4f} J/m^2. Error = Value - DFT.")
+    lines.append("")
+
+    header = ["Method"] + [f"It. {it}" for it in all_its]
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("|" + "|".join(["---"] * len(header)) + "|")
+
+    for c in curves:
+        by_it = dict(zip(c["its"], c["med"]))
+        row = [f"{c['label']} (n={c['n']})"]
+        for it in all_its:
+            row.append(f"{by_it[it] - dft_delta_jm2:+.4f}" if it in by_it else "--")
+        lines.append("| " + " | ".join(row) + " |")
+
+    lines.append("")
+
+    path.write_text("\n".join(lines))
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--file-root", default=None,
+                   help="Path to data/silicon_surface/ (default: auto-resolved)")
+    p.add_argument("--reference-xyz", default=None,
+                   help="Default: <file-root>/relaxed_struct_non_pandey.xyz")
+    p.add_argument("--reconstructed-xyz", default=None,
+                   help="Default: <file-root>/relaxed_struct_pandey.xyz")
+    p.add_argument("--reference-dft-dir", default=None,
+                   help="Finished VASP dir for --reference-xyz (with --reconstructed-dft-dir); adds a DFT line")
+    p.add_argument("--reconstructed-dft-dir", default=None)
+    p.add_argument("--out", default="reconstruction_energy_curves.png")
+    p.add_argument("--out-jm2", default="reconstruction_energy_curves_Jm2.png",
+                   help="Second figure, same data converted to J/m^2")
+    p.add_argument("--table-out", default="reconstruction_energy_table.md",
+                   help="Markdown table (J/m^2), one row per arm/run")
+    p.add_argument("--error-table-out", default="reconstruction_energy_error_table.md",
+                   help="Markdown table of value minus DFT delta (J/m^2); needs the DFT dirs")
+    p.add_argument("--area-ang2", type=float, default=None,
+                   help="Override the in-plane cell area (Ang^2) for J/m^2 (default: from --reference-xyz)")
+    p.add_argument("--n-surfaces", type=int, default=1,
+                   help="Reconstructing surfaces per cell for J/m^2 (1: frozen bottom cancels)")
+    p.add_argument("--device", default="cpu", help="default cpu")
+    p.add_argument("--relax", action="store_true",
+                   help="Relax both structures per model (LBFGS, --n-frozen lowest-z fixed); cached separately")
+    p.add_argument("--fmax", type=float, default=0.01,
+                   help="--relax force tolerance, eV/Å (default 0.01, matching VASP EDIFFG=-0.01)")
+    p.add_argument("--relax-steps", type=int, default=500)
+    p.add_argument("--n-frozen", type=int, default=None,
+                   help="--relax: number of lowest-z atoms held fixed (default: "
+                        "<file-root>/silicon_slab.data.n_frozen)")
+    p.add_argument("--arm", action="append", default=None, metavar="LABEL=PREFIX:MODEL_PATTERN",
+                   help="Repeatable; overrides the default arm list entirely if given at all")
+    p.add_argument("--refresh-cache", action="store_true",
+                    help="Ignore cached per-model results and re-evaluate everything")
+    return p.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    if args.file_root is not None:
+        file_root = Path(args.file_root).resolve()
+    else:
+        file_root = Path(__file__).resolve().parents[3] / "data" / "silicon_surface"
+    if not file_root.is_dir():
+        raise SystemExit(f"ERROR: {file_root} not found")
+
+    reference_xyz = Path(args.reference_xyz) if args.reference_xyz else file_root / "relaxed_struct_non_pandey.xyz"
+    reconstructed_xyz = Path(args.reconstructed_xyz) if args.reconstructed_xyz else file_root / "relaxed_struct_pandey.xyz"
+    for p in (reference_xyz, reconstructed_xyz):
+        if not p.is_file():
+            raise SystemExit(f"ERROR: {p} not found")
+
+    if (args.reference_dft_dir is None) != (args.reconstructed_dft_dir is None):
+        raise SystemExit("ERROR: --reference-dft-dir and --reconstructed-dft-dir must be given together")
+
+    if args.arm:
+        arms = {}
+        for a in args.arm:
+            label, rest = a.split("=", 1)
+            prefix, model_pattern = rest.split(":", 1)
+            arms[label] = (prefix, model_pattern)
+    else:
+        arms = DEFAULT_ARMS
+
+    from ase.io import read
+    reference = read(str(reference_xyz), index=0)
+    reconstructed = read(str(reconstructed_xyz), index=0)
+    print(f"Reading from: {file_root}")
+    print(f"reference: {reference_xyz.name} ({len(reference)} atoms)   "
+          f"reconstructed: {reconstructed_xyz.name} ({len(reconstructed)} atoms)")
+
+    relax = None
+    if args.relax:
+        n_frozen = args.n_frozen
+        if n_frozen is None:
+            n_frozen = int((file_root / "silicon_slab.data.n_frozen").read_text().strip())
+        relax = {"fmax": args.fmax, "steps": args.relax_steps, "n_frozen": n_frozen}
+        print(f"Relax mode: fmax={args.fmax} eV/Å, steps<={args.relax_steps}, "
+              f"{n_frozen} lowest-z atoms fixed")
+
+    dft_delta = None
+    if args.reference_dft_dir is not None:
+        print("Parsing DFT OUTCARs for the reference delta...")
+        e_ref_dft = dft_energy(Path(args.reference_dft_dir), len(reference))
+        e_recon_dft = dft_energy(Path(args.reconstructed_dft_dir), len(reconstructed))
+        dft_delta = e_recon_dft - e_ref_dft
+        print(f"DFT reconstruction energy delta = {dft_delta:+.6f} eV")
+
+    area_ang2 = args.area_ang2 if args.area_ang2 is not None else surface_area_ang2(reference)
+    print(f"Surface area: {area_ang2:.4f} Ang^2 (n_surfaces={args.n_surfaces})"
+          f"{' [overridden]' if args.area_ang2 is not None else ''}")
+
+    # Collect each curve's eV summary once; figures and tables derive from it.
+    curves: list[dict] = []
+    for i, (label, (prefix, model_pattern)) in enumerate(arms.items()):
+        data = load_arm(file_root, prefix, model_pattern, reference, reconstructed, args.device,
+                         refresh_cache=args.refresh_cache,
+                         relax=relax)
+        if data is None:
+            print(f"  [skip] {label} ({prefix}_seed_*): no seed directories found")
+            continue
+        if not data:
+            print(f"  [skip] {label} ({prefix}_seed_*): seed directories found, but no "
+                  f"models discovered inside yet")
+            continue
+
+        # Seed count over trained iterations (iteration 0 is the shared foundation model).
+        counts = [len(v) for it, v in data.items() if it > 0] or [len(v) for v in data.values()]
+        n_seeds = str(min(counts)) if min(counts) == max(counts) else f"{min(counts)}-{max(counts)}"
+        print(f"  [ok]   {label}: {len(data)} iteration(s) found, n={n_seeds} seed(s)")
+        its, med, lo, hi = summarize(data)
+        curves.append({"label": label, "its": its, "med": med, "lo": lo, "hi": hi,
+                        "n": n_seeds})
+
+    if not curves:
+        raise SystemExit("ERROR: no arms had any models to evaluate -- "
+                          "check --file-root and that the seeds scripts have actually run")
+
+    def make_plot(out_path: str, unit_label: str, convert, dft_value):
+        fig, (ax,) = plot_style.new_figure(1)
+        for i, c in enumerate(curves):
+            color = plot_style.arm_color(c["label"], i)
+            plot_style.plot_curve(ax, c["its"], convert(c["med"]), convert(c["lo"]), convert(c["hi"]),
+                                  color=color, label=c["label"])
+
+        if dft_value is not None:
+            ax.axhline(dft_value, color="black", linewidth=1.5, linestyle="--", label="DFT")
+
+        # Iteration 0 is the unfine-tuned foundation model.
+        plot_style.style_axis(ax, "Reconstruction energy",
+                              rf"$\Delta E_\mathrm{{recon}}$ ({unit_label})")
+        plot_style.add_legend(fig, ax)
+        plot_style.save(fig, out_path)
+
+    make_plot(args.out, "eV", lambda v: v, dft_delta)
+
+    dft_delta_jm2 = ev_to_jm2(dft_delta, area_ang2, args.n_surfaces) if dft_delta is not None else None
+    make_plot(args.out_jm2, "J/m$^2$", lambda v: ev_to_jm2(v, area_ang2, args.n_surfaces), dft_delta_jm2)
+
+    jm2_curves = [
+        {**c, "med": ev_to_jm2(c["med"], area_ang2, args.n_surfaces)}
+        for c in curves
+    ]
+    write_markdown_table(Path(args.table_out), jm2_curves, dft_delta_jm2)
+    print(f"Wrote: {args.table_out}")
+
+    if dft_delta_jm2 is not None:
+        write_markdown_error_table(Path(args.error_table_out), jm2_curves, dft_delta_jm2)
+        print(f"Wrote: {args.error_table_out}")
+    else:
+        print(f"  [skip] {args.error_table_out}: no DFT reference given "
+              f"(pass --reference-dft-dir/--reconstructed-dft-dir)")
+
+
+if __name__ == "__main__":
+    main()

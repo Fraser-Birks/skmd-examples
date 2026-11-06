@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "skmd-examples: active learning pipelines for Stein kernelized molecular dynamics"
+type: software
+license: MIT
+repository-code: "https://github.com/Fraser-Birks/skmd-examples"
+authors:
+  - family-names: Birks
+    given-names: Fraser
+  - family-names: Zou
+    given-names: Joanna
+preferred-citation:
+  type: conference-paper
+  title: "Stein Kernelized Molecular Dynamics for Active Learning of Interatomic Potentials"
+  authors:
+    - family-names: Zou
+      given-names: Joanna
+    - family-names: Birks
+      given-names: Fraser
+    - family-names: Foster
+      given-names: Dallas
+    - family-names: Marzouk
+      given-names: Youssef
+  collection-title: "Advances in Neural Information Processing Systems"
+  year: 2026

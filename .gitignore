@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+uv.lock
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Large inputs fetched from Zenodo (see data/MANIFEST.md)
+*.model
+*.npz
+data/alanine_dipeptide/test_set.xyz
+data/alanine_dipeptide/training_set_0.1_percent.xyz
+data/silicon_surface/DFT_reference/
+data/silicon_surface/DFT_relaxed/
+
+# Pipeline outputs (one directory per arm and seed, plus caches/figures)
+systems/muller_brown/results/
+data/*/*_seed_*/
+data/*/.reconstruction_energy*_cache.csv
+*.json
+*.lammpstrj
+*.dump
+*.extxyz
+*.png
+*.pdf
+*.log
+slurm-*.out

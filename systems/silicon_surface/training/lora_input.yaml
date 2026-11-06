@@ -1,0 +1,51 @@
+# name, foundation_model and train_file are passed on the mace_run_train CLI (phase2_collect_train.slurm).
+valid_frac: 0.1
+
+# Keys in the XYZ — written by xyz_utils.write_xyz_frame
+energy_key: dft_energy
+forces_key: dft_forces
+stress_key: dft_stresses
+
+E0s: '{14: -4.06855316}'
+
+# Enable LoRA
+lora: true
+lora_rank: 16
+lora_alpha: 1.0
+multiheads_finetuning: false
+
+forces_weight: 100.0
+energy_weight: 40.0
+config_type_weights: '{"si_slab_skmd": 10.0}'
+
+stage_two: true
+start_stage_two: 50
+
+swa_forces_weight: 10.0
+swa_energy_weight: 1000.0
+swa_lr: 0.0001
+
+# Optimizer / scheduler
+lr: 0.001
+weight_decay: 0.0
+amsgrad: true
+ema: true
+ema_decay: 0.999
+scheduler_patience: 10
+patience: 20
+clip_grad: 10.0
+
+# Runtime
+batch_size: 8
+valid_batch_size: 16
+max_num_epochs: 100
+eval_interval: 5
+restart_latest: true
+save_cpu: true
+device: cuda
+
+# Numerical precision
+default_dtype: float64
+
+# Reporting
+error_table: PerAtomMAE

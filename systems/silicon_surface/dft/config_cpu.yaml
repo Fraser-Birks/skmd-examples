@@ -1,0 +1,24 @@
+# VASP/SCAN settings (paper App. E.3) for dft_array.slurm (12 MPI ranks = KPAR 6 x NCORE 2).
+# Physics identical to config_gpu.yaml; ncore*kpar must divide the rank count or VASP falls back to NCORE=1.
+
+dft:
+  xc: SCAN                 # meta-GGA; calculators.py sets metagga=SCAN, lasph=True
+  encut: 900                # eV
+  ediff: 1.0e-6              # eV (electronic)
+  ediffg: -0.01              # eV/Å (unused in mode=static; kept for relax_ions mode)
+  prec: Accurate
+  ismear: 0                 # Gaussian smearing
+  sigma: 0.1                 # eV
+  lreal: false                # reciprocal-space projection
+  addgrid: true
+  lasph: true
+  ldiag: false
+  lmixtau: true
+  algo: Fast
+  nelm: 300
+  ncore: 2                   # 12 total MPI ranks / KPAR=6 groups = 2 ranks/group
+  kpar: 6                    # parallelise over k-point groups
+  isym: 1
+  gamma_centred: true
+  kspacing: 0.23             # Å⁻¹
+  slab_axis: 2                # z — vacuum direction; gets 1 k-point

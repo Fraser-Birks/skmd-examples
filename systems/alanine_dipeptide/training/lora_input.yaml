@@ -1,0 +1,56 @@
+# name, foundation_model and train_file are passed on the mace_run_train CLI (see slurm/example/iteration.slurm)
+valid_frac: 0.1
+
+# Labels written by the MACE-OFF oracle (skmd_run/draw_samples.py --oracle_model)
+energy_key: mace_energy
+forces_key: mace_forces
+
+# Isolated-atom E0s (eV) for H, C, N, O: MACE-OFF values, same as the surrogate fit (no multi-head needed)
+E0s:
+  1: -13.571964772646918
+  6: -1030.5671648271828
+  7: -1486.3750255780376
+  8: -2043.933693071156
+
+
+# Enable LoRA
+lora: true
+lora_rank: 4
+lora_alpha: 1.0
+multiheads_finetuning: false
+
+# Two-stage schedule (paper App. E.2): swa_* weights and swa_lr take over from start_stage_two
+forces_weight: 1000.0
+energy_weight: 40.0
+
+stage_two: true
+start_stage_two: 50
+
+swa_forces_weight: 10.0
+swa_energy_weight: 1000.0
+swa_lr: 0.001
+
+# Optimizer / scheduler
+lr: 0.01
+weight_decay: 0.0
+amsgrad: true
+ema: true
+ema_decay: 0.999
+scheduler_patience: 10
+patience: 20
+clip_grad: 10.0
+
+# Runtime
+batch_size: 8
+valid_batch_size: 16
+max_num_epochs: 100
+eval_interval: 5
+restart_latest: true
+save_cpu: true
+device: cuda
+
+# Numerical precision
+default_dtype: float64
+
+# Reporting
+error_table: PerAtomMAE

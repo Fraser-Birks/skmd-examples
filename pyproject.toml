@@ -1,0 +1,52 @@
+[project]
+name = "skmd"
+version = "0.1.0"
+description = "Stein kernelized molecular dynamics (SKMD): active learning pipelines for MACE interatomic potentials"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Fraser Birks" }, { name = "Joanna Zou" }]
+requires-python = ">=3.11"
+# Core dependencies: enough for the skmd package, the unit tests and the
+# figure-plotting scripts (from cached results).
+dependencies = [
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "matplotlib",
+    "ase",
+    "pyyaml",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+# Everything needed to run the active learning pipelines. LAMMPS (with
+# fix skmd, Kokkos and the symmetrix MACE pair style) and symmetrix are
+# NOT pip-installable here: build them as described in skmd-lammps and
+# install their Python modules into the same environment (see README).
+pipelines = [
+    "torch>=2.11.0",
+    "e3nn==0.4.4",
+    "mace-torch>=0.3.15",
+    "matscipy>=1.2.0",
+    "ase_uhal @ git+https://github.com/Fraser-Birks/ase_uhal.git@4eb77c71d009a7a2d7ae5a9efa19c234cbdbce6c",
+]
+# Müller–Brown experiments (systems/muller_brown); CPU only, no LAMMPS or MACE.
+muller-brown = ["torch", "pot"]
+dev = ["pytest"]
+
+[project.urls]
+Repository = "https://github.com/Fraser-Birks/skmd-examples"
+"LAMMPS plugin" = "https://github.com/Fraser-Birks/skmd-lammps"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["skmd"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "systems/silicon_surface/dft/tests"]

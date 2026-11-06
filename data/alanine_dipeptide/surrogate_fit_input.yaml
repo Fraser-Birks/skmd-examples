@@ -1,0 +1,78 @@
+# Training input used to fit the alanine dipeptide surrogate starting model
+# (mace_off_32_0.1_percent.model): a 32-channel MACE model fit from scratch
+# to a random 0.1% of the MACE-OFF training set (training_set_0.1_percent.xyz,
+# see data/MANIFEST.md).  Run with:  mace_run_train --config surrogate_fit_input.yaml
+
+name: mace_off_tiny
+seed: 42
+
+# Data
+train_file: training_set_0.1_percent.xyz
+valid_fraction: 0.10
+
+# Keys in the XYZ
+energy_key: dft_energy
+forces_key: dft_forces
+
+# Reference energies from MACE_OFF
+E0s:
+  1: -13.571964772646918
+  6: -1030.5671648271828
+  7: -1486.3750255780376
+  8: -2043.933693071156
+  9: -2715.318528602957
+  15: -9287.407133426237
+  16: -10834.4844708122
+  17: -12522.649269035726
+  35: -70045.28385080204
+  53: -8102.524593409054
+
+# Model family
+model: MACE
+
+# MACE-OFF24(M)-like architecture
+num_interactions: 2
+num_channels: 32
+max_L: 0
+correlation: 3
+r_max: 6.0
+
+# Data / training behaviour
+config_type_weights:
+  Default: 1.0
+
+# Published MACE-OFF training is two-stage: force-heavy first, energy-heavy later.
+# In current MACE docs this is "stage_two" (older examples often use "swa").
+forces_weight: 1000.0
+energy_weight: 40.0
+stage_two: true
+start_stage_two: 640
+
+# These keys are commonly used in public MACE examples and discussions for the second stage.
+# If your installed version rejects them, remove them and rely on stage_two alone.
+swa_forces_weight: 10.0
+swa_energy_weight: 1000.0
+swa_lr: 0.00025
+
+# Optimizer / scheduler
+lr: 0.01
+amsgrad: true
+ema: true
+ema_decay: 0.99
+scheduler_patience: 10
+patience: 20
+
+# Runtime
+batch_size: 8
+valid_batch_size: 16
+max_num_epochs: 1000
+eval_interval: 5
+restart_latest: true
+save_cpu: true
+device: cuda
+
+# Numerical precision
+default_dtype: float64
+
+# Reporting
+error_table: PerAtomMAE
