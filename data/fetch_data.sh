@@ -23,23 +23,29 @@ for arg in "$@"; do
     esac
 done
 
-fetch() {   # fetch <remote file name> <local path>
-    local name="$1" dest="$2"
+# Third-party models are fetched from their authors' releases.
+MACE_OFF_URL="https://github.com/ACEsuit/mace-off/raw/main/mace_off23/MACE-OFF23_small.model"
+MACE_MPA_URL="https://github.com/ACEsuit/mace-foundations/releases/download/mace_mpa_0/mace-mpa-0-medium.model"
+
+fetch() {   # fetch <Zenodo file name or URL> <local path>
+    local name="$1" dest="$2" url="${BASE_URL}/$1?download=1"
+    [[ "${name}" == http* ]] && url="${name}"
     if [[ -s "${dest}" ]]; then
         echo "  [skip] ${dest#"${DATA_DIR}/"} (exists)"
         return
     fi
     mkdir -p "$(dirname "${dest}")"
-    echo "  [get]  ${name} -> ${dest#"${DATA_DIR}/"}"
-    curl -fL --retry 3 -o "${dest}.part" "${BASE_URL}/${name}?download=1"
+    echo "  [get]  ${name##*/} -> ${dest#"${DATA_DIR}/"}"
+    curl -fL --retry 3 -o "${dest}.part" "${url}"
     mv "${dest}.part" "${dest}"
 }
 
 if [[ "${WHICH}" == "all" || "${WHICH}" == "alanine" ]]; then
     echo "Alanine dipeptide:"
     A="${DATA_DIR}/alanine_dipeptide"
-    for f in MACE-OFF23_small.model mace_off_32_0.1_percent.model \
-             training_set_0.1_percent.xyz phi_psi_relaxed_pes_off23_small.npz test_set.xyz; do
+    fetch "${MACE_OFF_URL}" "${A}/MACE-OFF23_small.model"
+    for f in mace_off_32_0.1_percent.model training_set_0.1_percent.xyz \
+             phi_psi_relaxed_pes_off23_small.npz test_set.xyz; do
         fetch "${f}" "${A}/${f}"
     done
 fi
@@ -47,7 +53,7 @@ fi
 if [[ "${WHICH}" == "all" || "${WHICH}" == "silicon" ]]; then
     echo "Si(111) surface:"
     S="${DATA_DIR}/silicon_surface"
-    fetch mace-mpa-0-medium.model "${S}/mace-mpa-0-medium.model"
+    fetch "${MACE_MPA_URL}" "${S}/mace-mpa-0-medium.model"
     # DFT OUTCARs are deposited as one archive containing
     # DFT_reference/{ref,pandey}/OUTCAR and DFT_relaxed/{ref,pandey}/OUTCAR.
     if [[ ! -s "${S}/DFT_reference/ref/OUTCAR" ]]; then

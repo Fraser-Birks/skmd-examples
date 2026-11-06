@@ -1,7 +1,7 @@
 # Data
 
-Files marked Zenodo ([10.5281/zenodo.24011550](https://doi.org/10.5281/zenodo.24011550))
-are fetched by `bash data/fetch_data.sh [alanine|silicon|results]`.
+Files not in the repo (Zenodo, [10.5281/zenodo.24011550](https://doi.org/10.5281/zenodo.24011550),
+or the model authors' releases) are fetched by `bash data/fetch_data.sh [alanine|silicon|results]`.
 
 ## `muller_brown/`
 
@@ -17,9 +17,9 @@ are fetched by `bash data/fetch_data.sh [alanine|silicon|results]`.
 |---|---|---|
 | `ace-ala-nme.{data,xyz}` | repo | starting structure |
 | `surrogate_fit_input.yaml` | repo | `mace_run_train` input for the surrogate |
-| `MACE-OFF23_small.model` | Zenodo | oracle |
+| `MACE-OFF23_small.model` | [ACEsuit/mace-off](https://github.com/ACEsuit/mace-off) (ASL) | oracle |
 | `mace_off_32_0.1_percent.model` | Zenodo | surrogate (iteration 0) |
-| `training_set_0.1_percent.xyz` | Zenodo | surrogate training set |
+| `training_set_0.1_percent.xyz` | Zenodo | surrogate training set (subset of SPICE, CC0) |
 | `phi_psi_relaxed_pes_off23_small.npz` | Zenodo | oracle Ramachandran surface (Fig. 3a) |
 | `test_set.xyz` | Zenodo | test set (Fig. 3f,g) |
 
@@ -30,7 +30,7 @@ are fetched by `bash data/fetch_data.sh [alanine|silicon|results]`.
 | `relaxed_struct_{non_pandey,pandey}.xyz` | repo | unreconstructed / Pandey slabs |
 | `silicon_slab.data{,.n_frozen}` | repo | LAMMPS data file, 18 frozen atoms |
 | `write_vasp_input_SCAN.py` | repo | reference VASP/SCAN settings |
-| `mace-mpa-0-medium.model` | Zenodo | foundation model (iteration 0) |
+| `mace-mpa-0-medium.model` | [ACEsuit/mace-foundations](https://github.com/ACEsuit/mace-foundations) (MIT) | foundation model (iteration 0) |
 | `DFT_relaxed/{ref,pandey}/OUTCAR` | Zenodo | relaxed SCAN slabs, ΔE_recon = −0.279 J/m² (Fig. 4) |
 | `DFT_reference/{ref,pandey}/OUTCAR` | Zenodo | SCAN single points at the fixed geometries, −0.382 J/m² |
 
